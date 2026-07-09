@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Stock Scanner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  const API_URL = 'https://script.google.com/macros/s/AKfycby2xmiluS2KxeWD7muoYVkZewniV1DLCogkjGXrgvVfDrHYlLjVS2DUrG374KJh6p9L/exec';
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #16181c;
+      --panel: #1f2227;
+      --panel-raised: #262a30;
+      --border: #33383f;
+      --text: #edeef0;
+      --muted: #8a8f98;
+      --add: #2bb673;
+      --add-dim: #1c7a4d;
+      --remove: #d6455d;
+      --remove-dim: #9c2f42;
+      --accent: var(--add);
+      --accent-dim: var(--add-dim);
+      --warn: #d98c2b;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      background: var(--bg); color: var(--text);
+      font-family: 'Inter', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior: none;
+    }
+    body[data-mode="REMOVE"] { --accent: var(--remove); --accent-dim: var(--remove-dim); }
+
+    .app { display: flex; flex-direction: column; height: 100vh; max-width: 520px; margin: 0 auto; }
+
+    header { padding: 14px 16px 10px; }
+    .brand {
+      font-family: 'Oswald', sans-serif; font-weight: 600; letter-spacing: 0.08em;
+      font-size: 13px; text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .brand .who { color: var(--muted); font-weight: 500; letter-spacing: 0; text-transform: none; cursor: pointer; text-decoration: underline dotted; }
+    .switch {
+      position: relative; display: flex; background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; padding: 4px; height: 52px;
+    }
+    .switch-thumb {
+      position: absolute; top: 4px; bottom: 4px; width: calc(50% - 4px);
+      background: var(--accent); border-radius: 9px;
+      transition: transform 0.22s cubic-bezier(.4,0,.2,1), background 0.22s;
+      transform: translateX(0);
+    }
+    body[data-mode="REMOVE"] .switch-thumb { transform: translateX(100%); }
+    .switch button {
+      position: relative; z-index: 1; flex: 1; border: 0; background: transparent;
+      font-family: 'Oswald', sans-serif; font-weight: 600; font-size: 15px; letter-spacing: 0.05em;
+      text-transform: uppercase; color: var(--muted); cursor: pointer; border-radius: 9px;
+    }
+    .switch button.active { color: #0d0f11; }
+
+    nav { display: flex; gap: 4px; padding: 0 16px 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    nav button {
+      flex: 0 0 auto; padding: 9px 12px; border: 1px solid var(--border); background: var(--panel);
+      color: var(--muted); font-family: 'Inter'; font-size: 12.5px; font-weight: 600;
+      border-radius: 8px; cursor: pointer; white-space: nowrap; position: relative;
+    }
+    nav button.active { color: var(--text); border-color: var(--accent); background: var(--panel-raised); }
+    nav button .badge {
+      position: absolute; top: -6px; right: -6px; background: var(--warn); color: #0d0f11;
+      font-size: 10px; font-weight: 700; min-width: 16px; height: 16px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; padding: 0 4px;
+    }
+
+    main { flex: 1; overflow-y: auto; padding: 0 16px 16px; }
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .scan-frame {
+      position: relative; border-radius: 16px; overflow: hidden; background: #000;
+      aspect-ratio: 1 / 1; border: 1px solid var(--border);
+    }
+    #reader { width: 100%; height: 100%; }
+    #reader video { object-fit: cover; }
+    .scan-hint { text-align: center; color: var(--muted); font-size: 13px; margin: 10px 0 16px; }
+
+    .manual-entry { display: flex; gap: 8px; margin-bottom: 4px; }
+    .manual-entry input {
+      flex: 1; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      padding: 12px 14px; border-radius: 10px; font-family: 'IBM Plex Mono'; font-size: 14px;
+    }
+    .manual-entry button {
+      background: var(--panel-raised); border: 1px solid var(--border); color: var(--text);
+      padding: 0 16px; border-radius: 10px; font-weight: 600; cursor: pointer;
+    }
+
+    .activity { margin-top: 20px; }
+    .activity h3 {
+      font-family: 'Oswald'; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--muted); margin: 0 0 8px;
+    }
+    .activity-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 12px; background: var(--panel); border-radius: 8px; margin-bottom: 6px;
+      font-size: 13.5px;
+    }
+    .activity-row .tag {
+      font-family: 'Oswald'; font-size: 10.5px; font-weight: 600; padding: 3px 7px; border-radius: 5px;
+      letter-spacing: 0.04em;
+    }
+    .activity-row .tag.ADD { background: rgba(43,182,115,0.18); color: var(--add); }
+    .activity-row .tag.REMOVE { background: rgba(214,69,93,0.18); color: var(--remove); }
+    .activity-row .stock { font-family: 'IBM Plex Mono'; color: var(--muted); }
+
+    .tray-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 20;
+      display: none; align-items: flex-end; justify-content: center;
+    }
+    .tray-backdrop.open { display: flex; }
+    .tray {
+      width: 100%; max-width: 520px; background: var(--panel-raised);
+      border-radius: 20px 20px 0 0; padding: 20px; border-top: 1px solid var(--border);
+      animation: rise 0.2s ease-out;
+    }
+    @keyframes rise { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .tray-mode-toggle { display: flex; gap: 8px; margin-bottom: 10px; }
+    .tray-mode-toggle button {
+      flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel);
+      color: var(--muted); font-family: 'Oswald'; font-weight: 600; font-size: 12.5px;
+      letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer;
+    }
+    .tray-mode-toggle button.active.ADD { background: rgba(43,182,115,0.18); color: var(--add); border-color: var(--add); }
+    .tray-mode-toggle button.active.REMOVE { background: rgba(214,69,93,0.18); color: var(--remove); border-color: var(--remove); }
+    .tray h2 { margin: 0 0 2px; font-family: 'Oswald'; font-size: 22px; }
+    .tray .meta { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+    .tray .stock-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+    .tray .stock-row .label { color: var(--muted); font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .tray .stock-row .value { font-family: 'IBM Plex Mono'; font-size: 26px; font-weight: 600; }
+    .tray .low-flag { color: var(--warn); font-size: 12.5px; margin-top: 4px; }
+
+    .stepper { display: flex; align-items: center; justify-content: center; gap: 18px; margin-bottom: 18px; }
+    .stepper button {
+      width: 48px; height: 48px; border-radius: 12px; border: 1px solid var(--border);
+      background: var(--panel); color: var(--text); font-size: 22px; cursor: pointer;
+    }
+    .stepper .qty { font-family: 'IBM Plex Mono'; font-size: 28px; min-width: 50px; text-align: center; }
+
+    .tray-actions { display: flex; gap: 10px; }
+    .tray-actions button { flex: 1; padding: 14px; border-radius: 12px; font-family: 'Oswald'; font-weight: 600;
+      font-size: 15px; letter-spacing: 0.04em; text-transform: uppercase; border: 0; cursor: pointer; }
+    .btn-cancel { background: var(--panel); color: var(--muted); border: 1px solid var(--border) !important; }
+    .btn-confirm { background: var(--accent); color: #0d0f11; }
+    .tray-error { color: var(--remove); font-size: 13.5px; margin-bottom: 10px; }
+
+    .search-bar input {
+      width: 100%; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      padding: 12px 14px; border-radius: 10px; font-size: 14px; margin-bottom: 12px;
+    }
+    .item-row {
+      display: flex; justify-content: space-between; align-items: center; padding: 12px;
+      background: var(--panel); border-radius: 10px; margin-bottom: 8px; border: 1px solid var(--border);
+    }
+    .item-row.low { border-color: var(--warn); }
+    .item-row .name { font-weight: 600; font-size: 14.5px; }
+    .item-row .cat { color: var(--muted); font-size: 12px; }
+    .item-row .stock-badge { font-family: 'IBM Plex Mono'; font-size: 15px; font-weight: 600; }
+    .item-row.low .stock-badge { color: var(--warn); }
+
+    .form-field { margin-bottom: 12px; }
+    .form-field label {
+      display: block; font-size: 12px; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.05em; margin-bottom: 6px;
+    }
+    .form-field input {
+      width: 100%; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      padding: 12px 14px; border-radius: 10px; font-size: 14px;
+    }
+    .primary-btn {
+      width: 100%; padding: 14px; border-radius: 12px; border: 0; background: var(--accent);
+      color: #0d0f11; font-family: 'Oswald'; font-weight: 600; font-size: 15px;
+      letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; margin-top: 4px;
+    }
+    .status-msg { font-size: 13.5px; margin: 8px 0; }
+    .status-msg.ok { color: var(--add); }
+    .status-msg.err { color: var(--remove); }
+
+    .catalog-item {
+      display: flex; justify-content: space-between; align-items: center; padding: 12px;
+      background: var(--panel); border-radius: 10px; margin-bottom: 8px; border: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .catalog-item .name { font-weight: 600; font-size: 14.5px; }
+    .catalog-item .cat { color: var(--muted); font-size: 12px; }
+    .catalog-item .add-btn {
+      width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--accent);
+      background: transparent; color: var(--accent); font-size: 18px; cursor: pointer;
+    }
+    .cart-bar {
+      position: sticky; bottom: 0; background: var(--panel-raised); border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px; margin-top: 14px;
+    }
+    .cart-bar h3 {
+      font-family: 'Oswald'; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--muted); margin: 0 0 10px;
+    }
+    .cart-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13.5px; }
+    .cart-row .cart-qty { display: flex; align-items: center; gap: 8px; }
+    .cart-row .cart-qty button {
+      width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--border);
+      background: var(--panel); color: var(--text); cursor: pointer;
+    }
+    .cart-row .cart-qty .n { font-family: 'IBM Plex Mono'; min-width: 18px; text-align: center; }
+    .requester-field { margin: 10px 0; }
+    .requester-field input {
+      width: 100%; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      padding: 10px 12px; border-radius: 8px; font-size: 13.5px;
+    }
+    .requester-field label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .req-card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      padding: 14px; margin-bottom: 10px;
+    }
+    .req-card .who { font-weight: 600; font-size: 14px; }
+    .req-card .when { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+    .req-card .req-item { display: flex; justify-content: space-between; font-size: 13.5px; padding: 4px 0; }
+    .req-card .req-item .qty { font-family: 'IBM Plex Mono'; color: var(--muted); }
+    .req-card .fulfill-btn {
+      width: 100%; margin-top: 10px; padding: 11px; border-radius: 9px; border: 0;
+      background: var(--add); color: #0d0f11; font-family: 'Oswald'; font-weight: 600;
+      font-size: 13.5px; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer;
+    }
+    .req-card .fulfill-btn:disabled { opacity: 0.5; }
+
+    .label-card {
+      background: #fff; color: #111; border-radius: 10px; padding: 12px; text-align: center;
+      margin-bottom: 10px;
+    }
+    .label-card .qr { margin: 0 auto 6px; width: 120px; height: 120px; }
+    .label-card .lname { font-weight: 700; font-size: 13px; }
+    .label-card .lcode { font-family: monospace; font-size: 11px; color: #555; }
+    @media print {
+      header, nav, .no-print { display: none !important; }
+      body { background: #fff; }
+      .label-card { break-inside: avoid; }
+    }
+
+    /* ---- Name-gate modal (first run) ---- */
+    .name-gate {
+      position: fixed; inset: 0; background: var(--bg); z-index: 50;
+      display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .name-gate .box { max-width: 360px; width: 100%; }
+    .name-gate h1 { font-family: 'Oswald'; font-size: 20px; margin-bottom: 6px; }
+    .name-gate p { color: var(--muted); font-size: 13.5px; margin-bottom: 16px; }
+    .name-gate input {
+      width: 100%; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      padding: 13px 14px; border-radius: 10px; font-size: 15px; margin-bottom: 12px;
+    }
+    .name-gate.hidden { display: none; }
+  </style>
+</head>
+<body data-mode="ADD">
+
+  <!-- NAME GATE: captures who's using the app, since there's no automatic -->
+  <!-- Google login to read anymore. Stored locally so it only asks once. -->
+  <div class="name-gate hidden" id="nameGate">
+    <div class="box">
+      <h1>Who's this?</h1>
+      <p>Your name gets attached to anything you scan, request, or fulfill — same as the account-based log the old system kept.</p>
+      <input id="nameGateInput" placeholder="Your name" autocomplete="off">
+      <button class="primary-btn" id="nameGateSubmit">Continue</button>
+    </div>
+  </div>
+
+  <div class="app">
+    <header>
+      <div class="brand">
+        <span>Stock Scanner</span>
+        <span class="who" id="whoAmI" onclick="changeUserName()"></span>
+      </div>
+      <div class="switch" id="modeSwitch">
+        <div class="switch-thumb"></div>
+        <button id="btnAdd" class="active" data-mode="ADD">+ Add Stock</button>
+        <button id="btnRemove" data-mode="REMOVE">&minus; Remove Stock</button>
+      </div>
+    </header>
+
+    <nav>
+      <button class="tab" data-view="scan">Scan</button>
+      <button class="tab" data-view="request">Request</button>
+      <button class="tab" data-view="queue">Queue<span class="badge" id="queueBadge" style="display:none;"></span></button>
+      <button class="tab" data-view="inventory">Inventory</button>
+      <button class="tab" data-view="additem">Add Item</button>
+      <button class="tab" data-view="labels">Labels</button>
+    </nav>
+
+    <main>
+      <section class="view" id="view-scan">
+        <div class="scan-frame"><div id="reader"></div></div>
+        <div class="scan-hint">Point the camera at a QR code, or type a code below.</div>
+        <div class="manual-entry">
+          <input id="manualCode" placeholder="Enter code manually" autocomplete="off">
+          <button id="manualGo">Go</button>
+        </div>
+        <div class="activity">
+          <h3>Recent activity (this session)</h3>
+          <div id="activityList"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-request">
+        <div class="search-bar"><input id="reqSearch" placeholder="Search items to request..."></div>
+        <div id="reqCatalog"></div>
+        <div class="cart-bar">
+          <h3>Your Request</h3>
+          <div id="cartList"></div>
+          <div class="requester-field">
+            <label>Your name</label>
+            <input id="requesterName" placeholder="e.g. Jordan P.">
+          </div>
+          <button class="primary-btn" id="btnSubmitRequest">Submit Request</button>
+          <div class="status-msg" id="requestStatus"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-queue">
+        <div class="scan-hint">Pending requests from your team. Fulfilling deducts stock automatically.</div>
+        <div id="queueList"></div>
+      </section>
+
+      <section class="view" id="view-inventory">
+        <div class="search-bar"><input id="invSearch" placeholder="Search inventory..."></div>
+        <div id="invList"></div>
+      </section>
+
+      <section class="view" id="view-additem">
+        <div class="form-field"><label>Code (scan or type)</label><input id="newCode"></div>
+        <div class="form-field"><label>Item Name</label><input id="newName"></div>
+        <div class="form-field"><label>Category</label><input id="newCategory"></div>
+        <div class="form-field"><label>Starting Stock</label><input id="newStock" type="number" value="0"></div>
+        <div class="form-field"><label>Reorder Level</label><input id="newReorder" type="number" value="0"></div>
+        <div class="status-msg" id="newItemStatus"></div>
+        <button class="primary-btn" id="btnAddItem">Add to Inventory</button>
+      </section>
+
+      <section class="view" id="view-labels">
+        <div class="scan-hint no-print">Generates a printable QR label for every item. Use your browser's print dialog to print on label sheets.</div>
+        <button class="primary-btn no-print" id="btnPrint" style="margin-bottom:16px;">Print All Labels</button>
+        <div id="labelGrid"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="tray-backdrop" id="trayBackdrop">
+    <div class="tray" id="tray"></div>
+  </div>
+
+  <script>
+    // ==== CONFIG — paste your deployed Apps Script /exec URL here ====
+    const API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+
+    // ---- API helpers ----
+    function apiGet(action, params) {
+      const url = new URL(API_URL);
+      url.searchParams.set('action', action);
+      Object.keys(params || {}).forEach(k => {
+        if (params[k] !== undefined && params[k] !== null) url.searchParams.set(k, params[k]);
+      });
+      return fetch(url).then(r => r.json());
+    }
+    function apiPost(action, payload) {
+      return fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids CORS preflight
+        body: JSON.stringify(Object.assign({ action: action }, payload))
+      }).then(r => r.json());
+    }
+
+    // ---- Identity (replaces the automatic Google-login capture) ----
+    function getUserName() { return localStorage.getItem('stockScannerUserName') || ''; }
+    function setUserName(name) {
+      localStorage.setItem('stockScannerUserName', name);
+      document.getElementById('whoAmI').textContent = name;
+    }
+    function changeUserName() {
+      const current = getUserName();
+      const next = prompt('Your name:', current);
+      if (next && next.trim()) setUserName(next.trim());
+    }
+    function ensureUserName() {
+      if (getUserName()) {
+        document.getElementById('whoAmI').textContent = getUserName();
+        return;
+      }
+      const gate = document.getElementById('nameGate');
+      gate.classList.remove('hidden');
+      document.getElementById('nameGateSubmit').onclick = () => {
+        const val = document.getElementById('nameGateInput').value.trim();
+        if (!val) return;
+        setUserName(val);
+        gate.classList.add('hidden');
+      };
+    }
+
+    // ---- URL params (for deep links like ?view=scan&code=WH-0001) ----
+    const urlParams = new URLSearchParams(window.location.search);
+    const INITIAL_VIEW = urlParams.get('view') || 'scan';
+    const INITIAL_CODE = urlParams.get('code') || '';
+    const INITIAL_MODE = urlParams.get('mode') === 'REMOVE' ? 'REMOVE' : 'ADD';
+
+    let currentMode = 'ADD';
+    let pendingItem = null;
+    let pendingQty = 1;
+    let sessionLog = [];
+    let scannerRunning = false;
+    let lastScanTime = 0;
+    let cart = [];
+    let requestCatalogCache = [];
+
+    // ---- Mode switch ----
+    function setMode(mode) {
+      currentMode = mode;
+      document.body.setAttribute('data-mode', mode);
+      document.getElementById('btnAdd').classList.toggle('active', mode === 'ADD');
+      document.getElementById('btnRemove').classList.toggle('active', mode === 'REMOVE');
+    }
+    document.getElementById('btnAdd').onclick = () => setMode('ADD');
+    document.getElementById('btnRemove').onclick = () => setMode('REMOVE');
+
+    // ---- Tab navigation ----
+    function switchTab(view) {
+      document.querySelectorAll('nav .tab').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+      document.querySelectorAll('main .view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
+      if (view === 'inventory') loadInventory();
+      if (view === 'labels') loadLabels();
+      if (view === 'request') loadRequestCatalog();
+      if (view === 'queue') loadQueue();
+      if (view === 'scan') startScanner();
+    }
+    document.querySelectorAll('nav .tab').forEach(btn => {
+      btn.onclick = () => switchTab(btn.dataset.view);
+    });
+
+    // ---- Camera scanner (works normally here — plain webpage, no iframe) ----
+    function startScanner() {
+      if (scannerRunning) return;
+      const qr = new Html5Qrcode('reader');
+      qr.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 220, height: 220 } },
+        (decodedText) => {
+          const now = Date.now();
+          if (now - lastScanTime < 1500) return;
+          lastScanTime = now;
+          if (navigator.vibrate) navigator.vibrate(80);
+          // A scanned deep link (from a printed label) decodes to a full URL —
+          // pull just the code out of it rather than treating the whole URL as a code.
+          let code = decodedText;
+          try {
+            const u = new URL(decodedText);
+            if (u.searchParams.get('code')) code = u.searchParams.get('code');
+          } catch (e) { /* not a URL, use as-is */ }
+          handleCode(code);
+        },
+        () => {}
+      ).then(() => { scannerRunning = true; }).catch(err => {
+        document.getElementById('reader').innerHTML =
+          '<div style="color:#8a8f98;padding:20px;text-align:center;font-size:13px;">Camera unavailable. Check browser permissions, or use manual entry below.</div>';
+      });
+    }
+
+    document.getElementById('manualGo').onclick = () => {
+      const val = document.getElementById('manualCode').value.trim();
+      if (val) { handleCode(val); document.getElementById('manualCode').value = ''; }
+    };
+    document.getElementById('manualCode').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('manualGo').click();
+    });
+
+    function handleCode(code) {
+      apiGet('lookupItem', { code: code }).then(item => {
+        if (!item) { showTrayError(code); return; }
+        pendingItem = item;
+        pendingQty = 1;
+        showTray();
+      });
+    }
+
+    function showTrayError(code) {
+      const tray = document.getElementById('tray');
+      tray.innerHTML = `
+        <div class="tray-error">No item found for code "${escapeHtml(code)}". Check the code, or add it under "Add Item".</div>
+        <div class="tray-actions"><button class="btn-cancel" onclick="closeTray()">Close</button></div>`;
+      document.getElementById('trayBackdrop').classList.add('open');
+    }
+    function showTray() {
+      renderTray();
+      document.getElementById('trayBackdrop').classList.add('open');
+    }
+    function closeTray() {
+      document.getElementById('trayBackdrop').classList.remove('open');
+    }
+    document.getElementById('trayBackdrop').addEventListener('click', (e) => {
+      if (e.target.id === 'trayBackdrop') closeTray();
+    });
+
+    function renderTray() {
+      const it = pendingItem;
+      const resultStock = currentMode === 'ADD' ? it.stock + pendingQty : Math.max(0, it.stock - pendingQty);
+      const tray = document.getElementById('tray');
+      tray.innerHTML = `
+        <div class="tray-mode-toggle">
+          <button class="${currentMode === 'ADD' ? 'active ADD' : ''}" onclick="setTrayMode('ADD')">+ Add</button>
+          <button class="${currentMode === 'REMOVE' ? 'active REMOVE' : ''}" onclick="setTrayMode('REMOVE')">&minus; Remove</button>
+        </div>
+        <h2>${escapeHtml(it.name)}</h2>
+        <div class="meta">${escapeHtml(it.category || '')} &middot; Code: ${escapeHtml(String(it.code))}</div>
+        <div class="stock-row">
+          <div><div class="label">Current</div><div class="value">${it.stock}</div></div>
+          <div style="font-size:20px;color:var(--muted)">&rarr;</div>
+          <div><div class="label">After</div><div class="value" style="color:var(--accent)">${resultStock}</div></div>
+        </div>
+        <div class="stepper">
+          <button onclick="changeQty(-1)">&minus;</button>
+          <div class="qty">${pendingQty}</div>
+          <button onclick="changeQty(1)">+</button>
+        </div>
+        ${resultStock <= it.reorderLevel ? '<div class="low-flag">&#9888; This will be at or below the reorder level.</div>' : ''}
+        <div class="tray-actions" style="margin-top:14px;">
+          <button class="btn-cancel" onclick="closeTray()">Cancel</button>
+          <button class="btn-confirm" onclick="confirmAdjust()">Confirm</button>
+        </div>`;
+    }
+    function changeQty(delta) {
+      pendingQty = Math.max(1, pendingQty + delta);
+      renderTray();
+    }
+    function setTrayMode(mode) {
+      setMode(mode);
+      renderTray();
+    }
+
+    function confirmAdjust() {
+      const tray = document.getElementById('tray');
+      tray.style.opacity = '0.6';
+      apiPost('adjustStock', { code: pendingItem.code, mode: currentMode, qty: pendingQty, userName: getUserName() })
+        .then(res => {
+          tray.style.opacity = '1';
+          if (!res.success) { showTrayError(pendingItem.code); return; }
+          sessionLog.unshift(res);
+          renderActivity();
+          closeTray();
+        });
+    }
+
+    function renderActivity() {
+      const list = document.getElementById('activityList');
+      if (sessionLog.length === 0) { list.innerHTML = '<div class="scan-hint">No scans yet this session.</div>'; return; }
+      list.innerHTML = sessionLog.slice(0, 8).map(r => `
+        <div class="activity-row">
+          <div><span class="tag ${r.newStock >= r.previousStock ? 'ADD' : 'REMOVE'}">${r.newStock >= r.previousStock ? 'ADD' : 'REMOVE'}</span>
+          &nbsp; ${escapeHtml(r.name)}</div>
+          <div class="stock">${r.previousStock} &rarr; ${r.newStock}</div>
+        </div>`).join('');
+    }
+
+    // ---- Inventory view ----
+    let inventoryCache = [];
+    function loadInventory() {
+      apiGet('getInventoryList').then(items => {
+        inventoryCache = items;
+        renderInventory(items);
+      });
+    }
+    function renderInventory(items) {
+      const list = document.getElementById('invList');
+      if (items.length === 0) { list.innerHTML = '<div class="scan-hint">No items yet. Add one under "Add Item".</div>'; return; }
+      list.innerHTML = items.map(it => `
+        <div class="item-row ${it.stock <= it.reorderLevel ? 'low' : ''}">
+          <div><div class="name">${escapeHtml(it.name)}</div><div class="cat">${escapeHtml(it.category || '')} &middot; ${escapeHtml(String(it.code))}</div></div>
+          <div class="stock-badge">${it.stock}</div>
+        </div>`).join('');
+    }
+    document.getElementById('invSearch').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      renderInventory(inventoryCache.filter(it =>
+        (it.name || '').toLowerCase().includes(q) ||
+        (it.category || '').toLowerCase().includes(q) ||
+        String(it.code).toLowerCase().includes(q)));
+    });
+
+    // ---- Add item view ----
+    document.getElementById('btnAddItem').onclick = () => {
+      const code = document.getElementById('newCode').value.trim();
+      const name = document.getElementById('newName').value.trim();
+      const category = document.getElementById('newCategory').value.trim();
+      const stock = document.getElementById('newStock').value;
+      const reorder = document.getElementById('newReorder').value;
+      const status = document.getElementById('newItemStatus');
+      if (!code || !name) { status.textContent = 'Code and name are required.'; status.className = 'status-msg err'; return; }
+      status.textContent = 'Saving...'; status.className = 'status-msg';
+      apiPost('addNewItem', { code, name, category, startingStock: stock, reorderLevel: reorder }).then(res => {
+        if (res.success) {
+          status.textContent = 'Added. You can now print a label for it.';
+          status.className = 'status-msg ok';
+          ['newCode','newName','newCategory'].forEach(id => document.getElementById(id).value = '');
+          document.getElementById('newStock').value = 0;
+          document.getElementById('newReorder').value = 0;
+        } else {
+          status.textContent = res.error;
+          status.className = 'status-msg err';
+        }
+      });
+    };
+
+    // ---- Request view (employee cart) ----
+    function loadRequestCatalog() {
+      apiGet('getInventoryList').then(items => {
+        requestCatalogCache = items;
+        renderRequestCatalog(items);
+      });
+      const nameField = document.getElementById('requesterName');
+      if (!nameField.value) nameField.value = getUserName();
+    }
+    function renderRequestCatalog(items) {
+      const list = document.getElementById('reqCatalog');
+      if (items.length === 0) { list.innerHTML = '<div class="scan-hint">No items in the catalog yet.</div>'; return; }
+      list.innerHTML = items.map(it => `
+        <div class="catalog-item">
+          <div><div class="name">${escapeHtml(it.name)}</div><div class="cat">${escapeHtml(it.category || '')}</div></div>
+          <button class="add-btn" onclick="addToCart('${escapeAttr(it.code)}')">+</button>
+        </div>`).join('');
+    }
+    document.getElementById('reqSearch').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      renderRequestCatalog(requestCatalogCache.filter(it =>
+        (it.name || '').toLowerCase().includes(q) || (it.category || '').toLowerCase().includes(q)));
+    });
+
+    function addToCart(code) {
+      const item = requestCatalogCache.find(it => String(it.code) === code);
+      if (!item) return;
+      const existing = cart.find(c => c.code === code);
+      if (existing) existing.qty += 1;
+      else cart.push({ code: item.code, name: item.name, qty: 1 });
+      renderCart();
+    }
+    function changeCartQty(code, delta) {
+      const c = cart.find(c => c.code === code);
+      if (!c) return;
+      c.qty += delta;
+      if (c.qty <= 0) cart = cart.filter(x => x.code !== code);
+      renderCart();
+    }
+    function renderCart() {
+      const list = document.getElementById('cartList');
+      if (cart.length === 0) { list.innerHTML = '<div class="scan-hint" style="margin:0 0 6px;">Nothing added yet. Tap + on an item above.</div>'; return; }
+      list.innerHTML = cart.map(c => `
+        <div class="cart-row">
+          <div>${escapeHtml(c.name)}</div>
+          <div class="cart-qty">
+            <button onclick="changeCartQty('${escapeAttr(c.code)}', -1)">&minus;</button>
+            <div class="n">${c.qty}</div>
+            <button onclick="changeCartQty('${escapeAttr(c.code)}', 1)">+</button>
+          </div>
+        </div>`).join('');
+    }
+
+    document.getElementById('btnSubmitRequest').onclick = () => {
+      const status = document.getElementById('requestStatus');
+      if (cart.length === 0) { status.textContent = 'Add at least one item first.'; status.className = 'status-msg err'; return; }
+      const name = document.getElementById('requesterName').value.trim();
+      if (!name) { status.textContent = 'Enter your name.'; status.className = 'status-msg err'; return; }
+      status.textContent = 'Submitting...'; status.className = 'status-msg';
+      apiPost('submitRequest', { cartItems: cart, requesterName: name, userName: getUserName() }).then(res => {
+        if (res.success) {
+          status.textContent = 'Request submitted. Someone will fulfill it soon.';
+          status.className = 'status-msg ok';
+          cart = [];
+          renderCart();
+          refreshQueueBadge();
+        } else {
+          status.textContent = res.error;
+          status.className = 'status-msg err';
+        }
+      });
+    };
+
+    // ---- Queue view (staff fulfillment) ----
+    function loadQueue() {
+      apiGet('getPendingRequests').then(renderQueue);
+    }
+    function renderQueue(requests) {
+      const list = document.getElementById('queueList');
+      if (!requests || requests.length === 0) {
+        list.innerHTML = '<div class="scan-hint">No pending requests.</div>';
+        return;
+      }
+      list.innerHTML = requests.map(r => `
+        <div class="req-card" id="req-${escapeAttr(r.requestId)}">
+          <div class="who">${escapeHtml(r.requester || 'Unknown')}</div>
+          <div class="when">${new Date(r.timestamp).toLocaleString()}</div>
+          ${r.items.map(it => `<div class="req-item"><div>${escapeHtml(it.name)}</div><div class="qty">${it.qty}</div></div>`).join('')}
+          <button class="fulfill-btn" onclick="fulfill('${escapeAttr(r.requestId)}', this)">Fulfill</button>
+        </div>`).join('');
+    }
+    function fulfill(requestId, btn) {
+      btn.disabled = true;
+      btn.textContent = 'Fulfilling...';
+      apiPost('fulfillRequest', { requestId: requestId, userName: getUserName() }).then(res => {
+        const card = document.getElementById('req-' + requestId);
+        if (card) card.remove();
+        refreshQueueBadge();
+        if (!res.success) alert('Some items could not be fulfilled — check the Inventory tab for stock levels.');
+      });
+    }
+    function refreshQueueBadge() {
+      apiGet('getPendingRequests').then(requests => {
+        const badge = document.getElementById('queueBadge');
+        const n = requests ? requests.length : 0;
+        badge.style.display = n > 0 ? 'flex' : 'none';
+        badge.textContent = n;
+      });
+    }
+
+    // ---- Labels view ----
+    function loadLabels() {
+      apiGet('getInventoryList').then(items => {
+        const grid = document.getElementById('labelGrid');
+        grid.innerHTML = '';
+        const baseUrl = window.location.origin + window.location.pathname;
+        items.forEach(it => {
+          const card = document.createElement('div');
+          card.className = 'label-card';
+          const qrDiv = document.createElement('div');
+          qrDiv.className = 'qr';
+          card.innerHTML = `<div class="lname">${escapeHtml(it.name)}</div><div class="lcode">${escapeHtml(String(it.code))}</div>`;
+          card.prepend(qrDiv);
+          grid.appendChild(card);
+          const link = baseUrl + '?view=scan&code=' + encodeURIComponent(it.code);
+          new QRCode(qrDiv, { text: link, width: 120, height: 120 });
+        });
+      });
+    }
+    document.getElementById('btnPrint').onclick = () => window.print();
+
+    function escapeAttr(str) { return String(str).replace(/'/g, "\\'"); }
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    }
+
+    // ---- Boot ----
+    ensureUserName();
+    renderActivity();
+    renderCart();
+    switchTab(['scan','request','queue','inventory','additem','labels'].includes(INITIAL_VIEW) ? INITIAL_VIEW : 'scan');
+    refreshQueueBadge();
+    if (INITIAL_CODE) {
+      setMode(INITIAL_MODE);
+      handleCode(INITIAL_CODE);
+    }
+  </script>
+</body>
+</html>
