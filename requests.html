@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Request Supplies</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #16181c;
+      --panel: #1f2227;
+      --panel-raised: #262a30;
+      --border: #33383f;
+      --text: #edeef0;
+      --muted: #8a8f98;
+      --accent: #2bb673;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; min-height: 100%;
+      background: var(--bg); color: var(--text);
+      font-family: 'Inter', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .app { max-width: 480px; margin: 0 auto; padding: 20px 16px 40px; }
+    header { margin-bottom: 18px; }
+    .brand {
+      font-family: 'Oswald', sans-serif; font-weight: 600; letter-spacing: 0.08em;
+      font-size: 13px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px;
+    }
+    h1 { font-family: 'Oswald', sans-serif; font-size: 24px; margin: 0 0 4px; }
+    .subtitle { color: var(--muted); font-size: 13.5px; }
+
+    .search-bar input {
+      width: 100%; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      padding: 12px 14px; border-radius: 10px; font-size: 14px; margin: 16px 0 12px;
+    }
+    .catalog-item {
+      display: flex; justify-content: space-between; align-items: center; padding: 12px;
+      background: var(--panel); border-radius: 10px; margin-bottom: 8px; border: 1px solid var(--border);
+    }
+    .catalog-item .name { font-weight: 600; font-size: 14.5px; }
+    .catalog-item .cat { color: var(--muted); font-size: 12px; }
+    .catalog-item .add-btn {
+      width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--accent);
+      background: transparent; color: var(--accent); font-size: 18px; cursor: pointer; flex-shrink: 0;
+    }
+
+    .cart-bar {
+      position: sticky; bottom: 12px; background: var(--panel-raised); border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px; margin-top: 14px;
+    }
+    .cart-bar h3 {
+      font-family: 'Oswald'; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--muted); margin: 0 0 10px;
+    }
+    .cart-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13.5px; }
+    .cart-row .cart-qty { display: flex; align-items: center; gap: 8px; }
+    .cart-row .cart-qty button {
+      width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--border);
+      background: var(--panel); color: var(--text); cursor: pointer;
+    }
+    .cart-row .cart-qty .n { font-family: 'IBM Plex Mono'; min-width: 18px; text-align: center; }
+
+    .requester-field { margin: 10px 0; }
+    .requester-field label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .requester-field input {
+      width: 100%; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      padding: 10px 12px; border-radius: 8px; font-size: 13.5px; margin-top: 4px;
+    }
+    .primary-btn {
+      width: 100%; padding: 14px; border-radius: 12px; border: 0; background: var(--accent);
+      color: #0d0f11; font-family: 'Oswald'; font-weight: 600; font-size: 15px;
+      letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; margin-top: 4px;
+    }
+    .status-msg { font-size: 13.5px; margin: 8px 0; }
+    .status-msg.ok { color: var(--accent); }
+    .status-msg.err { color: #d6455d; }
+    .empty-hint { text-align: center; color: var(--muted); font-size: 13px; padding: 20px 0; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand">Supply Requests</div>
+      <h1>What do you need?</h1>
+      <div class="subtitle">Add items below, then submit — someone will get it ready for you.</div>
+    </header>
+
+    <div class="search-bar"><input id="reqSearch" placeholder="Search..." autocomplete="off"></div>
+    <div id="reqCatalog"><div class="empty-hint">Loading items...</div></div>
+
+    <div class="cart-bar">
+      <h3>Your Request</h3>
+      <div id="cartList"></div>
+      <div class="requester-field">
+        <label>Your name</label>
+        <input id="requesterName" placeholder="e.g. Jordan P." autocomplete="off">
+      </div>
+      <button class="primary-btn" id="btnSubmitRequest">Submit Request</button>
+      <div class="status-msg" id="requestStatus"></div>
+    </div>
+  </div>
+
+  <script>
+    // ==== CONFIG — same Apps Script API URL as the staff app ====
+    const API_URL = 'https://script.google.com/macros/s/AKfycby2xmiluS2KxeWD7muoYVkZewniV1DLCogkjGXrgvVfDrHYlLjVS2DUrG374KJh6p9L/exec';
+
+    function apiGet(action, params) {
+      const url = new URL(API_URL);
+      url.searchParams.set('action', action);
+      Object.keys(params || {}).forEach(k => {
+        if (params[k] !== undefined && params[k] !== null) url.searchParams.set(k, params[k]);
+      });
+      return fetch(url).then(r => r.json());
+    }
+    function apiPost(action, payload) {
+      return fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(Object.assign({ action: action }, payload))
+      }).then(r => r.json());
+    }
+
+    let cart = [];
+    let catalogCache = [];
+    const savedName = localStorage.getItem('supplyRequestName') || '';
+    document.getElementById('requesterName').value = savedName;
+
+    function loadCatalog() {
+      apiGet('getInventoryList').then(items => {
+        catalogCache = items;
+        renderCatalog(items);
+      });
+    }
+    function renderCatalog(items) {
+      const list = document.getElementById('reqCatalog');
+      if (!items || items.length === 0) { list.innerHTML = '<div class="empty-hint">No items available yet.</div>'; return; }
+      list.innerHTML = items.map(it => `
+        <div class="catalog-item">
+          <div><div class="name">${escapeHtml(it.name)}</div><div class="cat">${escapeHtml(it.category || '')}</div></div>
+          <button class="add-btn" onclick="addToCart('${escapeAttr(it.code)}')">+</button>
+        </div>`).join('');
+    }
+    document.getElementById('reqSearch').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      renderCatalog(catalogCache.filter(it =>
+        (it.name || '').toLowerCase().includes(q) || (it.category || '').toLowerCase().includes(q)));
+    });
+
+    function addToCart(code) {
+      const item = catalogCache.find(it => String(it.code) === code);
+      if (!item) return;
+      const existing = cart.find(c => c.code === code);
+      if (existing) existing.qty += 1;
+      else cart.push({ code: item.code, name: item.name, qty: 1 });
+      renderCart();
+    }
+    function changeCartQty(code, delta) {
+      const c = cart.find(c => c.code === code);
+      if (!c) return;
+      c.qty += delta;
+      if (c.qty <= 0) cart = cart.filter(x => x.code !== code);
+      renderCart();
+    }
+    function renderCart() {
+      const list = document.getElementById('cartList');
+      if (cart.length === 0) { list.innerHTML = '<div class="empty-hint" style="padding:6px 0;">Nothing added yet — tap + on an item above.</div>'; return; }
+      list.innerHTML = cart.map(c => `
+        <div class="cart-row">
+          <div>${escapeHtml(c.name)}</div>
+          <div class="cart-qty">
+            <button onclick="changeCartQty('${escapeAttr(c.code)}', -1)">&minus;</button>
+            <div class="n">${c.qty}</div>
+            <button onclick="changeCartQty('${escapeAttr(c.code)}', 1)">+</button>
+          </div>
+        </div>`).join('');
+    }
+
+    document.getElementById('btnSubmitRequest').onclick = () => {
+      const status = document.getElementById('requestStatus');
+      if (cart.length === 0) { status.textContent = 'Add at least one item first.'; status.className = 'status-msg err'; return; }
+      const name = document.getElementById('requesterName').value.trim();
+      if (!name) { status.textContent = 'Enter your name.'; status.className = 'status-msg err'; return; }
+      status.textContent = 'Submitting...'; status.className = 'status-msg';
+      apiPost('submitRequest', { cartItems: cart, requesterName: name }).then(res => {
+        if (res.success) {
+          localStorage.setItem('supplyRequestName', name);
+          status.textContent = 'Request submitted. Someone will fulfill it soon.';
+          status.className = 'status-msg ok';
+          cart = [];
+          renderCart();
+        } else {
+          status.textContent = res.error || 'Something went wrong. Try again.';
+          status.className = 'status-msg err';
+        }
+      });
+    };
+
+    function escapeAttr(str) { return String(str).replace(/'/g, "\\'"); }
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    }
+
+    renderCart();
+    loadCatalog();
+  </script>
+</body>
+</html>
