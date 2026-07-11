@@ -484,48 +484,50 @@
         formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
         verbose: false
       });
-      qr.start(
-        {
-          facingMode: 'environment',
-          // Ask for a sharper feed than the library's default — on a lot of
-          // phones the default resolution is low enough that a QR code more
-          // than a foot or two away is too blurry to decode.
-          width: { ideal: 1920 },
-          height: { ideal: 1920 },
-          advanced: [{ focusMode: 'continuous' }]
-        },
-        {
-          fps: 12,
-          // A fixed 220px box was too small/strict on most phones. Sizing it
-          // relative to the actual camera preview — and clamping it to a
-          // sensible range — makes the target area big enough to hit
-          // reliably without spilling outside the visible frame.
-          qrbox: (viewfinderWidth, viewfinderHeight) => {
-            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-            const size = Math.floor(Math.min(Math.max(minEdge * 0.8, 200), 350));
-            return { width: size, height: size };
-          },
-          aspectRatio: 1.0
-        },
-        (decodedText) => {
-          const now = Date.now();
-          if (now - lastScanTime < 1500) return;
-          lastScanTime = now;
-          if (navigator.vibrate) navigator.vibrate(80);
-          // A scanned deep link (from a printed label) decodes to a full URL —
-          // pull just the code out of it rather than treating the whole URL as a code.
-          let code = decodedText;
-          try {
-            const u = new URL(decodedText);
-            if (u.searchParams.get('code')) code = u.searchParams.get('code');
-          } catch (e) { /* not a URL, use as-is */ }
-          handleCode(code);
-        },
-        () => {}
-      ).then(() => { scannerRunning = true; }).catch(err => {
-        document.getElementById('reader').innerHTML =
-          '<div style="color:#8a8f98;padding:20px;text-align:center;font-size:13px;">Camera unavailable. Check browser permissions, or use manual entry below.</div>';
-      });
+      const scanConfig = {
+        fps: 12,
+        // A fixed 220px box was too small/strict on most phones. Sizing it
+        // relative to the actual camera preview — and clamping it to a
+        // sensible range — makes the target area big enough to hit
+        // reliably without spilling outside the visible frame.
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          const size = Math.floor(Math.min(Math.max(minEdge * 0.8, 200), 350));
+          return { width: size, height: size };
+        }
+      };
+      const onScan = (decodedText) => {
+        const now = Date.now();
+        if (now - lastScanTime < 1500) return;
+        lastScanTime = now;
+        if (navigator.vibrate) navigator.vibrate(80);
+        // A scanned deep link (from a printed label) decodes to a full URL —
+        // pull just the code out of it rather than treating the whole URL as a code.
+        let code = decodedText;
+        try {
+          const u = new URL(decodedText);
+          if (u.searchParams.get('code')) code = u.searchParams.get('code');
+        } catch (e) { /* not a URL, use as-is */ }
+        handleCode(code);
+      };
+
+      // Try the back camera first (normal case). If that specific request
+      // fails for any reason, fall back to whatever camera the browser will
+      // give us, rather than just giving up — some phones/browsers reject
+      // an explicit facingMode even though a usable camera exists.
+      qr.start({ facingMode: 'environment' }, scanConfig, onScan, () => {})
+        .then(() => { scannerRunning = true; })
+        .catch(() => {
+          qr.start({}, scanConfig, onScan, () => {})
+            .then(() => { scannerRunning = true; })
+            .catch(err => {
+              console.error('Camera start failed:', err);
+              document.getElementById('reader').innerHTML =
+                '<div style="color:#8a8f98;padding:20px;text-align:center;font-size:13px;">Camera unavailable (' +
+                escapeHtml(err && err.name ? err.name : String(err)) +
+                '). Check browser camera permissions, or use manual entry below.</div>';
+            });
+        });
     }
 
     document.getElementById('manualGo').onclick = () => {
