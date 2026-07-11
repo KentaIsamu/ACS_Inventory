@@ -23,6 +23,7 @@
       --accent: var(--add);
       --accent-dim: var(--add-dim);
       --warn: #d98c2b;
+      --neutral: #3d8bfd;
     }
     * { box-sizing: border-box; }
     html, body {
@@ -182,6 +183,7 @@
       color: #0d0f11; font-family: 'Oswald'; font-weight: 600; font-size: 15px;
       letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; margin-top: 4px;
     }
+    .primary-btn.neutral { background: var(--neutral); }
     .status-msg { font-size: 13.5px; margin: 8px 0; }
     .status-msg.ok { color: var(--add); }
     .status-msg.err { color: var(--remove); }
@@ -338,22 +340,24 @@
 
       <section class="view" id="view-inventory">
         <div class="search-bar"><input id="invSearch" placeholder="Search inventory..."></div>
+        <div class="scan-hint" style="margin-top:0;">Tap any item to add or remove stock without scanning.</div>
         <div id="invList"></div>
       </section>
 
       <section class="view" id="view-additem">
+        <div class="scan-hint" style="margin-top:0;">This creates a brand-new catalog entry — it's separate from the Add/Remove Stock switch above, which only adjusts quantity on items that already exist.</div>
         <div class="form-field"><label>Code (scan or type)</label><input id="newCode"></div>
         <div class="form-field"><label>Item Name</label><input id="newName"></div>
         <div class="form-field"><label>Category</label><input id="newCategory"></div>
         <div class="form-field"><label>Starting Stock</label><input id="newStock" type="number" value="0"></div>
         <div class="form-field"><label>Reorder Level</label><input id="newReorder" type="number" value="0"></div>
         <div class="status-msg" id="newItemStatus"></div>
-        <button class="primary-btn" id="btnAddItem">Add to Inventory</button>
+        <button class="primary-btn neutral" id="btnAddItem">Add to Inventory</button>
       </section>
 
       <section class="view" id="view-labels">
         <div class="scan-hint no-print">Generates a printable QR label for every item. Use your browser's print dialog to print on label sheets.</div>
-        <button class="primary-btn no-print" id="btnPrint" style="margin-bottom:16px;">Print All Labels</button>
+        <button class="primary-btn neutral no-print" id="btnPrint" style="margin-bottom:16px;">Print All Labels</button>
         <div id="labelGrid"></div>
       </section>
     </main>
@@ -472,10 +476,37 @@
     // ---- Camera scanner (works normally here — plain webpage, no iframe) ----
     function startScanner() {
       if (scannerRunning) return;
-      const qr = new Html5Qrcode('reader');
+      const qr = new Html5Qrcode('reader', {
+        // We only ever scan QR codes here, so restricting to just that format
+        // (instead of the library's default of trying ~10 barcode formats
+        // every frame) makes each scan attempt faster and less prone to
+        // missed reads.
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false
+      });
       qr.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 220, height: 220 } },
+        {
+          facingMode: 'environment',
+          // Ask for a sharper feed than the library's default — on a lot of
+          // phones the default resolution is low enough that a QR code more
+          // than a foot or two away is too blurry to decode.
+          width: { ideal: 1920 },
+          height: { ideal: 1920 },
+          advanced: [{ focusMode: 'continuous' }]
+        },
+        {
+          fps: 12,
+          // A fixed 220px box was too small/strict on most phones. Sizing it
+          // relative to the actual camera preview — and clamping it to a
+          // sensible range — makes the target area big enough to hit
+          // reliably without spilling outside the visible frame.
+          qrbox: (viewfinderWidth, viewfinderHeight) => {
+            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+            const size = Math.floor(Math.min(Math.max(minEdge * 0.8, 200), 350));
+            return { width: size, height: size };
+          },
+          aspectRatio: 1.0
+        },
         (decodedText) => {
           const now = Date.now();
           if (now - lastScanTime < 1500) return;
@@ -605,7 +636,7 @@
       const list = document.getElementById('invList');
       if (items.length === 0) { list.innerHTML = '<div class="scan-hint">No items yet. Add one under "Add Item".</div>'; return; }
       list.innerHTML = items.map(it => `
-        <div class="item-row ${it.stock <= it.reorderLevel ? 'low' : ''}">
+        <div class="item-row ${it.stock <= it.reorderLevel ? 'low' : ''}" style="cursor:pointer;" onclick="handleCode('${escapeAttr(it.code)}')">
           <div><div class="name">${escapeHtml(it.name)}</div><div class="cat">${escapeHtml(it.category || '')} &middot; ${escapeHtml(String(it.code))}</div></div>
           <div class="stock-badge">${it.stock}</div>
         </div>`).join('');
