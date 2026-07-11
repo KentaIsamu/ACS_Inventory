@@ -146,7 +146,14 @@
       width: 48px; height: 48px; border-radius: 12px; border: 1px solid var(--border);
       background: var(--panel); color: var(--text); font-size: 22px; cursor: pointer;
     }
-    .stepper .qty { font-family: 'IBM Plex Mono'; font-size: 28px; min-width: 50px; text-align: center; }
+    .stepper .qty {
+      font-family: 'IBM Plex Mono'; font-size: 28px; width: 90px; text-align: center;
+      background: var(--panel); color: var(--text); border: 1px solid var(--border);
+      border-radius: 10px; padding: 8px 4px; -moz-appearance: textfield;
+    }
+    .stepper .qty:focus { outline: none; border-color: var(--accent); }
+    .stepper .qty::-webkit-outer-spin-button,
+    .stepper .qty::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
     .tray-actions { display: flex; gap: 10px; }
     .tray-actions button { flex: 1; padding: 14px; border-radius: 12px; font-family: 'Oswald'; font-weight: 600;
@@ -567,7 +574,7 @@
 
     function renderTray() {
       const it = pendingItem;
-      const resultStock = currentMode === 'ADD' ? it.stock + pendingQty : Math.max(0, it.stock - pendingQty);
+      const resultStock = computeResultStock_();
       const tray = document.getElementById('tray');
       tray.innerHTML = `
         <div class="tray-mode-toggle">
@@ -579,22 +586,52 @@
         <div class="stock-row">
           <div><div class="label">Current</div><div class="value">${it.stock}</div></div>
           <div style="font-size:20px;color:var(--muted)">&rarr;</div>
-          <div><div class="label">After</div><div class="value" style="color:var(--accent)">${resultStock}</div></div>
+          <div><div class="label">After</div><div class="value" id="afterValue" style="color:var(--accent)">${resultStock}</div></div>
         </div>
         <div class="stepper">
           <button onclick="changeQty(-1)">&minus;</button>
-          <div class="qty">${pendingQty}</div>
+          <input class="qty" id="qtyInput" type="number" inputmode="numeric" min="1" step="1"
+                 value="${pendingQty}" oninput="onQtyInput(this.value)" onblur="onQtyBlur()">
           <button onclick="changeQty(1)">+</button>
         </div>
-        ${resultStock <= it.reorderLevel ? '<div class="low-flag">&#9888; This will be at or below the reorder level.</div>' : ''}
+        <div id="lowFlagWrap">${resultStock <= it.reorderLevel ? '<div class="low-flag">&#9888; This will be at or below the reorder level.</div>' : ''}</div>
         <div class="tray-actions" style="margin-top:14px;">
           <button class="btn-cancel" onclick="closeTray()">Cancel</button>
           <button class="btn-confirm" onclick="confirmAdjust()">Confirm</button>
         </div>`;
     }
+    function computeResultStock_() {
+      const it = pendingItem;
+      return currentMode === 'ADD' ? it.stock + pendingQty : Math.max(0, it.stock - pendingQty);
+    }
     function changeQty(delta) {
       pendingQty = Math.max(1, pendingQty + delta);
       renderTray();
+    }
+    // Typing in the quantity box updates the "After" number live without
+    // rebuilding the whole tray — rebuilding would steal focus mid-keystroke
+    // and make typing multi-digit numbers painful.
+    function onQtyInput(rawValue) {
+      const n = parseInt(rawValue, 10);
+      pendingQty = (!isNaN(n) && n >= 1) ? n : pendingQty;
+      const resultStock = computeResultStock_();
+      const afterEl = document.getElementById('afterValue');
+      if (afterEl) afterEl.textContent = resultStock;
+      const lowWrap = document.getElementById('lowFlagWrap');
+      if (lowWrap) {
+        lowWrap.innerHTML = resultStock <= pendingItem.reorderLevel
+          ? '<div class="low-flag">&#9888; This will be at or below the reorder level.</div>' : '';
+      }
+    }
+    // If someone leaves the box empty or types something invalid, snap it
+    // back to a sane value once they tap away rather than mid-typing.
+    function onQtyBlur() {
+      const input = document.getElementById('qtyInput');
+      if (!input) return;
+      const n = parseInt(input.value, 10);
+      pendingQty = (!isNaN(n) && n >= 1) ? n : 1;
+      input.value = pendingQty;
+      onQtyInput(pendingQty);
     }
     function setTrayMode(mode) {
       setMode(mode);
